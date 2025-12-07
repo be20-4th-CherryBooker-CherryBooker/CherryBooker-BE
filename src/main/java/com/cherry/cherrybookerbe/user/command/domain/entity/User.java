@@ -14,8 +14,6 @@ import lombok.*;
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@AllArgsConstructor
-@Builder
 public class User extends BaseTimeEntity {
 
     @Id
@@ -34,16 +32,33 @@ public class User extends BaseTimeEntity {
     private String userEmail;
 
     @Column(name = "user_password", length = 300)
-    private String userPassword;   // 소셜 로그인일 땐 null 가능
+    private String userPassword;
 
     @Column(name = "user_nickname", nullable = false, length = 20)
     private String userNickname;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "user_status", nullable = false, length = 20)
-    private UserStatus userStatus = UserStatus.NORMAL;
+    private UserStatus userStatus;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "user_role", nullable = false, length = 20)
-    private UserRole userRole = UserRole.USER;
+    private UserRole userRole;
+
+    @Builder
+    private User(LoginType loginType,
+                 String userName,
+                 String userEmail,
+                 String userPassword,
+                 String userNickname) {
+        this.loginType = loginType;
+        this.userName = userName;
+        this.userEmail = userEmail;
+        this.userPassword = userPassword;
+        this.userNickname = userNickname;
+
+        // 생성 시 기본 상태
+        this.userStatus = UserStatus.NORMAL;
+        this.userRole = UserRole.USER;
+    }
 }
