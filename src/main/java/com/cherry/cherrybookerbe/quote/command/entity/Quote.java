@@ -1,5 +1,7 @@
 package com.cherry.cherrybookerbe.quote.command.entity;
 
+import com.cherry.cherrybookerbe.common.enums.Status;
+import com.cherry.cherrybookerbe.common.model.entity.BaseTimeEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -8,11 +10,8 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "quote")
 @Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class Quote {
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class Quote extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -35,13 +34,19 @@ public class Quote {
     @Column(length = 500)
     private String comment;
 
-    private Boolean isDeleted;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private Status status = Status.Y;
 
-    private LocalDateTime createdAt;
-
-    @PrePersist
-    public void prePersist() {
-        isDeleted = false;
-        createdAt = LocalDateTime.now();
+    @Builder
+    private Quote(Long userId, Long userBookId, String content,
+                  String bookTitle, String author, String imagePath, String comment) {
+        this.userId = userId;
+        this.userBookId = userBookId;
+        this.content = content;
+        this.bookTitle = bookTitle;
+        this.author = author;
+        this.imagePath = imagePath;
+        this.comment = comment;
     }
 }
