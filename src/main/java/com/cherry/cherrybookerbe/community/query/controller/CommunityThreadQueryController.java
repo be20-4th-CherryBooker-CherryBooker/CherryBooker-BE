@@ -1,5 +1,6 @@
 package com.cherry.cherrybookerbe.community.query.controller;
 
+import com.cherry.cherrybookerbe.common.dto.ApiResponse;
 import com.cherry.cherrybookerbe.community.query.dto.CommunityThreadDetailResponse;
 import com.cherry.cherrybookerbe.community.query.dto.CommunityThreadSummaryResponse;
 import com.cherry.cherrybookerbe.community.query.service.CommunityThreadQueryService;
@@ -20,13 +21,19 @@ public class CommunityThreadQueryController {
         this.communityThreadQueryService = communityThreadQueryService;
     }
 
+    // 커뮤니티 스레드 목록을 조회하는 메소드
     @GetMapping
-    public ResponseEntity<List<CommunityThreadSummaryResponse>> getThreadList() {
-        return ResponseEntity.ok(communityThreadQueryService.getThreadList());
+    public ResponseEntity<ApiResponse<List<CommunityThreadSummaryResponse>>> getThreadList() {
+        List<CommunityThreadSummaryResponse> responses = communityThreadQueryService.getThreadList();
+        return ResponseEntity.ok(ApiResponse.success(responses));
     }
 
+    // 특정 커뮤니티 스레드의 상세 정보를 조회하는 메소드
     @GetMapping("/{threadId}")
-    public ResponseEntity<CommunityThreadDetailResponse> getThreadDetail(@PathVariable Integer threadId) {
-        return ResponseEntity.ok(communityThreadQueryService.getThreadDetail(threadId));
+    public ResponseEntity<ApiResponse<CommunityThreadDetailResponse>> getThreadDetail(
+            @PathVariable Integer threadId
+    ) {
+        CommunityThreadDetailResponse response = communityThreadQueryService.getThreadDetail(threadId);
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 }

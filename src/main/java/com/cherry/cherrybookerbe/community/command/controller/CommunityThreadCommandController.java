@@ -1,5 +1,6 @@
 package com.cherry.cherrybookerbe.community.command.controller;
 
+import com.cherry.cherrybookerbe.common.dto.ApiResponse;
 import com.cherry.cherrybookerbe.community.command.dto.request.CreateCommunityReplyRequest;
 import com.cherry.cherrybookerbe.community.command.dto.request.CreateCommunityThreadRequest;
 import com.cherry.cherrybookerbe.community.command.dto.request.UpdateCommunityReplyRequest;
@@ -22,52 +23,58 @@ public class CommunityThreadCommandController {
         this.communityThreadCommandService = communityThreadCommandService;
     }
 
-    // ================== 최초 스레드 ==================
-
+    // 커뮤니티의 최초 스레드를 생성하는 메소드
     @PostMapping
-    public ResponseEntity<CommunityThreadCommandResponse> createThread(
+    public ResponseEntity<ApiResponse<CommunityThreadCommandResponse>> createThread(
             @Valid @RequestBody CreateCommunityThreadRequest request
     ) {
+        CommunityThreadCommandResponse response = communityThreadCommandService.createThread(request);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(communityThreadCommandService.createThread(request));
+                .body(ApiResponse.success(response));
     }
 
+    // 기존 커뮤니티 스레드를 수정하는 메소드
     @PutMapping("/{threadId}")
-    public ResponseEntity<CommunityThreadCommandResponse> updateThread(
+    public ResponseEntity<ApiResponse<CommunityThreadCommandResponse>> updateThread(
             @PathVariable Integer threadId,
             @Valid @RequestBody UpdateCommunityThreadRequest request
     ) {
-        return ResponseEntity.ok(communityThreadCommandService.updateThread(threadId, request));
+        CommunityThreadCommandResponse response = communityThreadCommandService.updateThread(threadId, request);
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 
+    // 기존 커뮤니티 스레드를 삭제하는 메소드
     @DeleteMapping("/{threadId}")
-    public ResponseEntity<Void> deleteThread(@PathVariable Integer threadId) {
+    public ResponseEntity<ApiResponse<Void>> deleteThread(@PathVariable Integer threadId) {
         communityThreadCommandService.deleteThread(threadId);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
-    // ================== 릴레이(답글) ==================
-
+    // 특정 스레드에 릴레이(답글)를 생성하는 메소드
     @PostMapping("/{threadId}/replies")
-    public ResponseEntity<CommunityReplyCommandResponse> createReply(
+    public ResponseEntity<ApiResponse<CommunityReplyCommandResponse>> createReply(
             @PathVariable Integer threadId,
             @Valid @RequestBody CreateCommunityReplyRequest request
     ) {
+        CommunityReplyCommandResponse response = communityThreadCommandService.createReply(threadId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(communityThreadCommandService.createReply(threadId, request));
+                .body(ApiResponse.success(response));
     }
 
+    // 기존 릴레이(답글)를 수정하는 메소드
     @PutMapping("/replies/{replyId}")
-    public ResponseEntity<CommunityReplyCommandResponse> updateReply(
+    public ResponseEntity<ApiResponse<CommunityReplyCommandResponse>> updateReply(
             @PathVariable Integer replyId,
             @Valid @RequestBody UpdateCommunityReplyRequest request
     ) {
-        return ResponseEntity.ok(communityThreadCommandService.updateReply(replyId, request));
+        CommunityReplyCommandResponse response = communityThreadCommandService.updateReply(replyId, request);
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 
+    // 기존 릴레이(답글)를 삭제하는 메소드
     @DeleteMapping("/replies/{replyId}")
-    public ResponseEntity<Void> deleteReply(@PathVariable Integer replyId) {
+    public ResponseEntity<ApiResponse<Void>> deleteReply(@PathVariable Integer replyId) {
         communityThreadCommandService.deleteReply(replyId);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 }

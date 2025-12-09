@@ -1,6 +1,6 @@
 package com.cherry.cherrybookerbe.notification.command.domain.enums;
 
-public enum TemplateType {
+public enum NotificationTemplateType {
     SYSTEM,
     EVENT
 }
