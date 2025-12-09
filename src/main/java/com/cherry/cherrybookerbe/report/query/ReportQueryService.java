@@ -21,12 +21,12 @@ public class ReportQueryService {
     private final CommunityThreadRepository threadRepository;
     private final CommunityReplyRepository replyRepository;
     private final UserRepository userRepository;
-    private final QuoteRepository quoteRepository;
+    private final QuoteQueryRepository quoteRepository;
 
 
     public ReportQueryService(
             ReportQueryRepository reportQueryRepository,
-            QuoteRepository quoteRepository) {
+            QuoteQueryRepository quoteRepository) {
         this.reportQueryRepository = reportQueryRepository;
         this.quoteRepository = quoteRepository;
     }
@@ -43,7 +43,7 @@ public class ReportQueryService {
 
         for (Long threadId : pendingThreadIds) {
             CommunityThread thread = threadRepository.findById(pendingThreadIds)
-                    .orElseThrow(() -> new IllegalAccessException("게시글 없음"));
+                    .orElseThrow(() -> new  IllegalArgumentException("게시글 없음"));
 
             Quote quote = quoteRepository.findById(thread.getQuoteId().longValue())
                     .orElseThrow(() -> new IllegalArgumentException("글귀 없음"));
@@ -51,11 +51,10 @@ public class ReportQueryService {
             Long reportedUserId = thread.getUserId().longValue();
 
             User reportedUser = userRepository.findById(reportedUserId)
-                    .orElseThrow(() -> new IllegalAccessException("유저 없음"));
-
+                    .orElseThrow(() -> new IllegalArgumentException("유저 없음"));
 
             ReportPendingResponse reportPendingResponse = new ReportPendingResponse(
-                    reportedUser.getUserId().longValue(),
+                    reportedUserId,
                     thread.getId().longValue(),
                     null,
                     thread.getCreatedAt(),
@@ -67,17 +66,17 @@ public class ReportQueryService {
         }
         for (Long threadId : pendingReportIds) {
             CommunityReply reply = replyRepository.findById(replyId)
-                    .orElseThrow(() -> new IllegalAccessException("댓글 없음"));
+                    .orElseThrow(() -> new IllegalArgumentException("댓글 없음"));
 
             Quote quote = quoteRepository.findById(reply.getQuoteId().longValue())
                     .orElseThrow(() -> new IllegalArgumentException("글귀 없음"));
 
             Long reportedUserId = reply.getUserId().longValue();
             User reportedUser = userRepository.findById(reportedUserId)
-                    .orElseThrow(() -> new IllegalAccessException("유저 없음"));
+                    .orElseThrow(() -> new IllegalArgumentException("유저 없음"));
 
             ReportPendingResponse reportPendingResponse = new ReportPendingResponse(
-                    reportedUser.getUserId().longValue(),
+                    reportedUserId(),
                     null,
                     reply.getId().longValue(),
                     reply.getCreatedAt(),
@@ -87,6 +86,7 @@ public class ReportQueryService {
             );
             result.add(reportPendingResponse);
         }
+        return result;
     }
 }
 */
