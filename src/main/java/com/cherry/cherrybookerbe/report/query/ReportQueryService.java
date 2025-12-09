@@ -15,27 +15,27 @@ import java.util.List;
 @Service
 @Transactional(readOnly = true)
 public class ReportQueryService {
+     /*
     private final ReportQueryRepository reportQueryRepository;
-    /*
     private final CommunityThreadRepository threadRepository;
     private final CommunityReplyRepository replyRepository;
     private final UserRepository userRepository;
     private final QuoteRepository quoteRepository;
 
-     */
+
     public ReportQueryService(
             ReportQueryRepository reportQueryRepository,
-            QuoteRepository quoteRepository)
-    {
+            QuoteRepository quoteRepository) {
         this.reportQueryRepository = reportQueryRepository;
         this.quoteRepository = quoteRepository;
     }
+
     // 관리자 신고 목록 조회. 5회 이상 + PENDING
-    public List<ReportPendingResponse> getPendingReportsForAdmin(){
+    public List<ReportPendingResponse> getPendingReportsForAdmin() {
         List<ReportPendingResponse> result = new ArrayList<>();
 
         List<Long> pendingThreadIds
-                 = reportQueryRepository.findPendingThreadIdsReportedOverFive();
+                = reportQueryRepository.findPendingThreadIdsReportedOverFive();
 
         List<Long> pendingReportIds
                 = reportQueryRepository.findPendingReplyIdsReportedOverFive();
@@ -64,7 +64,7 @@ public class ReportQueryService {
             );
             result.add(reportPendingResponse);
         }
-        for(Long threadId : pendingReportIds){
+        for (Long threadId : pendingReportIds) {
             CommunityReply reply = replyRepository.findById(replyId)
                     .orElseThrow(() -> new IllegalAccessException("댓글 없음"));
 
@@ -74,7 +74,7 @@ public class ReportQueryService {
             Long reportedUserId = reply.getUserId().longValue();
             User reportedUser = userRepository.findById(reportedUserId)
                     .orElseThrow(() -> new IllegalAccessException("유저 없음"));
-            
+
             ReportPendingResponse reportPendingResponse = new ReportPendingResponse(
                     reportedUser.getUserId().longValue(),
                     null,
@@ -87,6 +87,5 @@ public class ReportQueryService {
             result.add(reportPendingResponse);
         }
     }
-
-
 }
+*/
