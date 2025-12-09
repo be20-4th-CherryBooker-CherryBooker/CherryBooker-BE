@@ -64,7 +64,7 @@ public class SecurityConfig {
                 // OAuth2 설정
                 // ========================================================
                 .oauth2Login(oauth2 -> oauth2
-                        .loginPage("/login")
+                        //.loginPage("/login")
                         .userInfoEndpoint(u -> u.userService(oAuth2UserService))
                         .successHandler(oAuth2SuccessHandler)
                 );

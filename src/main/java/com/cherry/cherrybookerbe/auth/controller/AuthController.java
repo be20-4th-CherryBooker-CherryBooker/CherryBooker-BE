@@ -2,6 +2,7 @@ package com.cherry.cherrybookerbe.auth.controller;
 
 import com.cherry.cherrybookerbe.auth.dto.response.auth.AuthResponse;
 import com.cherry.cherrybookerbe.auth.service.TokenService;
+import com.cherry.cherrybookerbe.common.dto.ApiResponse;
 import com.cherry.cherrybookerbe.common.security.auth.RefreshTokenStore;
 import com.cherry.cherrybookerbe.common.security.auth.UserPrincipal;
 import jakarta.servlet.http.Cookie;
@@ -39,7 +40,7 @@ public class AuthController {
         AuthResponse response = tokenService.refresh(refreshToken);
 
 
-        return ResponseEntity.ok(ApiResponse.ok(response));
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     //로그 아웃
@@ -58,7 +59,7 @@ public class AuthController {
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, deleteCookie.toString())
-                .body(ApiResponse.ok(null));
+                .body(ApiResponse.success(null));
     }
 }
 

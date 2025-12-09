@@ -16,6 +16,8 @@ import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 
+import java.util.UUID;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -41,13 +43,27 @@ public class OAuth2UserService extends DefaultOAuth2UserService {
         boolean isNewUser = false;
 
         if (user == null) {
+
+            // "이름 → 닉네임"
+            String nickname = userInfo.getName();
+            if (nickname == null || nickname.isBlank()) {
+                // name도 없으면 이메일 앞부분, 그것도 없으면 랜덤
+                String email = userInfo.getEmail();
+                if (email != null && !email.isBlank()) {
+                    nickname = email.split("@")[0];
+                } else {
+                    nickname = "user_" + UUID.randomUUID().toString().substring(0, 8);
+                }
+            }
+
             user = User.builder()
                     .userEmail(userInfo.getEmail())
                     .userName(userInfo.getName())
+                    .userNickname(nickname)
                     .loginType(loginType)
                     .build();
-            userRepository.save(user);
 
+            userRepository.save(user);
             isNewUser = true;
         }
 
