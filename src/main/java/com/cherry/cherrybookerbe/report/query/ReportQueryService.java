@@ -7,6 +7,7 @@ import com.cherry.cherrybookerbe.report.domain.ReportStatus;
 import com.cherry.cherrybookerbe.report.query.dto.ReportPendingResponse;
 import com.cherry.cherrybookerbe.report.query.dto.ReportSummaryResponse;
 import com.cherry.cherrybookerbe.user.command.domain.entity.User;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,82 +15,102 @@ import java.util.ArrayList;
 import java.util.List;
 
 // 5회 이상 신고 받은 목록 조회
-/*
+
 @Service
 @Transactional(readOnly = true)
 public class ReportQueryService {
-     /*
-    private final ReportQueryRepository reportQueryRepository;
-    private final CommunityThreadRepository threadRepository;
-    private final CommunityReplyRepository replyRepository;
-    private final UserRepository userRepository;
-    private final QuoteQueryRepository quoteRepository;
 
+    private final ReportQueryRepository reportQueryRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     public ReportQueryService(
             ReportQueryRepository reportQueryRepository,
-            QuoteQueryRepository quoteRepository) {
+            JdbcTemplate jdbcTemplate
+    ) {
         this.reportQueryRepository = reportQueryRepository;
-        this.quoteRepository = quoteRepository;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     // 관리자 신고 목록 조회. 5회 이상 + PENDING
     public List<ReportPendingResponse> getPendingReportsForAdmin() {
+
         List<ReportPendingResponse> result = new ArrayList<>();
-
-        List<Long> pendingThreadIds
-                = reportQueryRepository.findPendingThreadIdsReportedOverFive();
-
-        List<Long> pendingReportIds
-                = reportQueryRepository.findPendingReplyIdsReportedOverFive();
-
+        List<Long> pendingThreadIds =
+                reportQueryRepository.findPendingThreadIdsReportedOverFive();
         for (Long threadId : pendingThreadIds) {
-            CommunityThread thread = threadRepository.findById(replyId)
-                    .orElseThrow(() -> new  IllegalArgumentException("게시글 없음"));
+            ReportPendingResponse response = jdbcTemplate.queryForObject(
+                    """
+               
+                            SELECT 
+                   u.user_id AS reportedUserId,
+                   u.user_nickname AS targetNickname,
+                   t.threads_id AS threadId,
+                   t.report_count AS reportCount,
+                   t.created_at AS createdAt,
+                   q.content AS quoteContent
+               FROM threads t
+               JOIN users u ON t.user_id = u.user_id
+               JOIN quotes q ON t.quote_id = q.quote_id
+               WHERE t.threads_id = ?
+               """,
 
-            Quote quote = quoteRepository.findById(thread.getQuoteId().longValue())
-                    .orElseThrow(() -> new IllegalArgumentException("글귀 없음"));
-
-            Long reportedUserId = thread.getUserId().longValue();
-
-            User reportedUser = userRepository.findById(reportedUserId)
-                    .orElseThrow(() -> new IllegalArgumentException("유저 없음"));
-
-            ReportPendingResponse reportPendingResponse = new ReportPendingResponse(
-                    reportedUserId,
-                    thread.getId().longValue(),
-                    null,
-                    thread.getCreatedAt(),
-                    thread.getReportCount(),
-                    reportedUser.getUserNickname(),
-                    quote.getContent()
-            );
-            result.add(reportPendingResponse);
+                (rs, rowNum) -> new ReportPendingResponse(
+                        rs.getLong("reportedUserId"),
+                        rs.getString("targetNickname"),
+                        rs.getLong("threadId"),
+                        null, // 댓글 아님
+                        rs.getInt("reportCount"),
+                        0, // deleteCount = 사용 안 함 → 0으로 고정 가능
+                        rs.getTimestamp("createdAt").toLocalDateTime(),
+                        rs.getString("quoteContent"),
+                        ReportStatus.PENDING,
+                        null
+                ),
+            threadId
+        );
+        result.add(response);
         }
-        for (Long replyId : pendingReportIds) {
-            CommunityReply reply = replyRepository.findById(replyId)
-                    .orElseThrow(() -> new IllegalArgumentException("댓글 없음"));
+        // ✅ 2. 댓글 신고 목록
+        List<Long> pendingReplyIds =
+                reportQueryRepository.findPendingReplyIdsReportedOverFive();
 
-            Quote quote = quoteRepository.findById(reply.getQuoteId().longValue())
-                    .orElseThrow(() -> new IllegalArgumentException("글귀 없음"));
+        for (Long replyId : pendingReplyIds) {
 
-            Long reportedUserId = reply.getUserId().longValue();
-            User reportedUser = userRepository.findById(reportedUserId)
-                    .orElseThrow(() -> new IllegalArgumentException("유저 없음"));
+            ReportPendingResponse response = jdbcTemplate.queryForObject(
+                    """
+                    SELECT 
+                        u.user_id AS reportedUserId,
+                        u.user_nickname AS targetNickname,
+                        r.threads_reply_id AS threadReplyId,
+                        r.report_count AS reportCount,
+                        r.created_at AS createdAt,
+                        q.content AS quoteContent
+                    FROM threads_reply r
+                    JOIN users u ON r.user_id = u.user_id
+                    JOIN quotes q ON r.quote_id = q.quote_id
+                    WHERE r.threads_reply_id = ?
+                    """,
 
-            ReportPendingResponse reportPendingResponse = new ReportPendingResponse(
-                    reportedUserId,
-                    null,
-                    reply.getId().longValue(),
-                    reply.getCreatedAt(),
-                    reply.getReportCount(),
-                    reportedUser.getUserNickname(),
-                    quote.getContent()
+                    (rs, rowNum) -> new ReportPendingResponse(
+                            rs.getLong("reportedUserId"),
+                            rs.getString("targetNickname"),
+                            null, // ✅ 게시글 아님
+                            rs.getLong("threadReplyId"),
+                            rs.getInt("reportCount"),
+                            0,
+                            rs.getTimestamp("createdAt").toLocalDateTime(),
+                            rs.getString("quoteContent"),
+                            ReportStatus.PENDING,
+                            null
+                    ),
+                    replyId
             );
-            result.add(reportPendingResponse);
+
+            result.add(response);
         }
         return result;
     }
+
     public ReportSummaryResponse getReportSummary() {
 
         long total = reportQueryRepository.count();
@@ -99,10 +120,47 @@ public class ReportQueryService {
         );
         return new ReportSummaryResponse(total, pending, completed);
     }
-     public ReportPendingResponse getReportDetail(Long reportId) {
-        throw new UnsupportedOperationException("신고 상세 조회는 레포 연결 후 구현됩니다.");
-    }
- */
 
-}*/
+    public ReportPendingResponse getReportDetail(Long reportId) {
+
+        return jdbcTemplate.queryForObject(
+                """
+                SELECT 
+                    u.user_id AS reportedUserId,
+                    u.user_nickname AS targetNickname,
+                    t.threads_id AS threadId,
+                    r.threads_reply_id AS threadReplyId,
+                    COALESCE(t.report_count, r.report_count) AS reportCount,
+                    0 AS deleteCount,
+                    COALESCE(t.created_at, r.created_at) AS createdAt,
+                    q.content AS quoteContent,
+                    rep.status AS status,
+                    rep.admin_comment AS adminComment
+                FROM report rep
+                LEFT JOIN threads t ON rep.threads_id = t.threads_id
+                LEFT JOIN threads_reply r ON rep.threads_reply_id = r.threads_reply_id
+                JOIN users u ON u.user_id = COALESCE(t.user_id, r.user_id)
+                JOIN quotes q ON q.quote_id = COALESCE(t.quote_id, r.quote_id)
+                WHERE rep.report_id = ?
+                """,
+
+                (rs, rowNum) -> new ReportPendingResponse(
+                        rs.getLong("reportedUserId"),
+                        rs.getString("targetNickname"),
+                        rs.getObject("threadId") == null ? null : rs.getLong("threadId"),
+                        rs.getObject("threadReplyId") == null ? null : rs.getLong("threadReplyId"),
+                        rs.getInt("reportCount"),
+                        rs.getInt("deleteCount"),
+                        rs.getTimestamp("createdAt").toLocalDateTime(),
+                        rs.getString("quoteContent"),
+                        ReportStatus.valueOf(rs.getString("status")),
+                        rs.getString("adminComment")
+                ),
+
+                reportId
+        );
+    }
+
+
+}
 
