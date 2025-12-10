@@ -8,15 +8,18 @@ import com.cherry.cherrybookerbe.report.domain.Report;
 import com.cherry.cherrybookerbe.report.domain.ReportStatus;
 import com.cherry.cherrybookerbe.report.query.ReportQueryRepository;
 import com.cherry.cherrybookerbe.user.command.domain.entity.User;
-import com.cherry.cherrybookerbe.user.command.repository.UserRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 // 신고 저장
 // 5회 이상 => 쿼리 서비스 부르기
 // 관리자 reject 처리 시 → thread에서 삭제 처리
 // 삭제되면 → user에서 정리 처리
+@Service
+@Transactional
 public class ReportCommandService {
 
     private final ReportCommandRepository reportCommandRepository;
