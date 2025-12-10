@@ -134,10 +134,22 @@ public class ReportCommandService {
         // 게시글 삭제
         if(report.getThreads() != null) {
             Integer threadId = report.getThreads().getId();
+            Integer reportedUserId = report.getThreads().getUserId();
 
             jdbcTemplate.update(
                     "UPDATE threads SET is_deleted = true WHERE threads_id=?",
                     threadId
+            );
+            // 2) delete_count 증가
+            jdbcTemplate.update(
+                    "UPDATE users SET delete_count = delete_count + 1 WHERE user_id = ?",
+                    reportedUserId
+            );
+
+            // 3) delete_count가 3 이상이면 정지 처리
+            jdbcTemplate.update(
+                    "UPDATE users SET user_status = 'SUSPENDED' WHERE user_id = ? AND delete_count >= 3",
+                    reportedUserId
             );
 
         }
@@ -145,10 +157,22 @@ public class ReportCommandService {
         // 댓글 삭제
         if(report.getThreadsReply() != null) {
             Integer replyId = report.getThreadsReply().getId();
+            Integer reportedUserId = report.getThreadsReply().getUserId();
 
             jdbcTemplate.update(
                     "UPDATE threads_reply SET is_deleted = true, deleted_at = NOW() WHERE threads_reply_id = ?",
                     replyId
+            );
+            // 2) delete_count 증가
+            jdbcTemplate.update(
+                    "UPDATE users SET delete_count = delete_count + 1 WHERE user_id = ?",
+                    reportedUserId
+            );
+
+            // 3) delete_count가 3 이상이면 정지 처리
+            jdbcTemplate.update(
+                    "UPDATE users SET user_status = 'SUSPENDED' WHERE user_id = ? AND delete_count >= 3",
+                    reportedUserId
             );
         }
 
