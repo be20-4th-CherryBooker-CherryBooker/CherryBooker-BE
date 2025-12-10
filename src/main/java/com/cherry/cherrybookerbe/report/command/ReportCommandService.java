@@ -137,7 +137,7 @@ public class ReportCommandService {
             Integer reportedUserId = report.getThreads().getUserId();
 
             jdbcTemplate.update(
-                    "UPDATE threads SET is_deleted = true WHERE threads_id=?",
+                    "UPDATE threads SET is_deleted = 1 WHERE threads_id=?",
                     threadId
             );
             // 2) delete_count 증가
@@ -160,7 +160,7 @@ public class ReportCommandService {
             Integer reportedUserId = report.getThreadsReply().getUserId();
 
             jdbcTemplate.update(
-                    "UPDATE threads_reply SET is_deleted = true, deleted_at = NOW() WHERE threads_reply_id = ?",
+                    "UPDATE threads_reply SET is_deleted = 1, deleted_at = NOW() WHERE threads_reply_id = ?",
                     replyId
             );
             // 2) delete_count 증가
