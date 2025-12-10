@@ -50,12 +50,12 @@ public class Report extends BaseTimeEntity {
     }
 
     // 신고 승인 처리
-    public void approve() {
+    public void approve(String adminComment) {
         this.status = ReportStatus.VALID;
         this.adminComment = adminComment;
     }
     // 신고 반려 처리
-    public void reject() {
+    public void reject(String adminComment) {
         this.status = ReportStatus.REJECTED;
         this.adminComment = adminComment;
     }
