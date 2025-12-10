@@ -11,6 +11,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -27,7 +28,7 @@ public class NotificationCommandController {
     @PatchMapping("/api/notifications/me/{notificationId}/read")
     public ResponseEntity<ApiResponse<Void>> markRead(
             @PathVariable Integer notificationId,
-            @AuthenticationPrincipal(expression = "id") Integer userId // principal.id 에 맞춰 수정
+            @AuthenticationPrincipal(expression = "userId") Integer userId // principal.id 에 맞춰 수정
     ) {
         commandService.markRead(userId, notificationId);
         return ResponseEntity.ok(ApiResponse.success(null));
@@ -35,8 +36,11 @@ public class NotificationCommandController {
 
     @PatchMapping("/api/notifications/me/read-all")
     public ResponseEntity<ApiResponse<Void>> markAllRead(
-            @AuthenticationPrincipal(expression = "id") Integer userId
+            @AuthenticationPrincipal(expression = "userId") Integer userId
     ) {
+        if (userId == null) {
+            throw new AccessDeniedException("인증 정보가 없습니다.");
+        }
         commandService.markAllRead(userId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
@@ -44,7 +48,7 @@ public class NotificationCommandController {
     @DeleteMapping("/api/notifications/me/{notificationId}")
     public ResponseEntity<ApiResponse<Void>> deleteNotification(
             @PathVariable Integer notificationId,
-            @AuthenticationPrincipal(expression = "id") Integer userId
+            @AuthenticationPrincipal(expression = "userId") Integer userId
     ) {
         commandService.deleteNotification(userId, notificationId);
         return ResponseEntity.ok(ApiResponse.success(null));
@@ -52,8 +56,11 @@ public class NotificationCommandController {
 
     @DeleteMapping("/api/notifications/me/read")
     public ResponseEntity<ApiResponse<Void>> deleteAllRead(
-            @AuthenticationPrincipal(expression = "id") Integer userId
+            @AuthenticationPrincipal(expression = "userId") Integer userId
     ) {
+        if (userId == null) {
+            throw new AccessDeniedException("인증 정보가 없습니다.");
+        }
         commandService.deleteAllRead(userId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }

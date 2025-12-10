@@ -20,7 +20,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.*;
-
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.*;
@@ -115,7 +114,7 @@ class NotificationQueryServiceTest {
         NotificationTemplate t2 = NotificationTemplate.builder()
                 .title("답변 알림")
                 .body("답변 본문")
-                .type(NotificationTemplateType.EVENT)
+                .type(NotificationTemplateType.EVENT_THREAD_REPLY)
                 .build();
         ReflectionTestUtils.setField(t2, "id", 2);
 
@@ -143,7 +142,7 @@ class NotificationQueryServiceTest {
         NotificationTemplate t1 = NotificationTemplate.builder()
                 .title("답변 알림")
                 .body("본문")
-                .type(NotificationTemplateType.EVENT)
+                .type(NotificationTemplateType.EVENT_THREAD_REPLY)
                 .build();
         ReflectionTestUtils.setField(t1, "id", 2);
 
@@ -169,7 +168,7 @@ class NotificationQueryServiceTest {
         NotificationTemplate template = NotificationTemplate.builder()
                 .title("답변 알림")
                 .body("본문")
-                .type(NotificationTemplateType.EVENT)
+                .type(NotificationTemplateType.EVENT_THREAD_REPLY)
                 .build();
         ReflectionTestUtils.setField(template, "id", 10);
 

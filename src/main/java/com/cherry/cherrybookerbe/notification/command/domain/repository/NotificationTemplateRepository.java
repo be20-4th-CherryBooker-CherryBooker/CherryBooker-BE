@@ -6,6 +6,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Optional;
+
 public interface NotificationTemplateRepository extends JpaRepository<NotificationTemplate, Integer> {
 
     Page<NotificationTemplate> findByDeletedFalse(Pageable pageable);
@@ -13,4 +15,6 @@ public interface NotificationTemplateRepository extends JpaRepository<Notificati
     Page<NotificationTemplate> findByDeletedFalseAndTitleContainingIgnoreCase(
             String title, Pageable pageable
     );
+
+    Optional<NotificationTemplate> findByTypeAndDeletedFalse(NotificationTemplateType type);
 }

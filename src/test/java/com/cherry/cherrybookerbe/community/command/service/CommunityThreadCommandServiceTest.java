@@ -95,17 +95,18 @@ class CommunityThreadCommandServiceTest {
     @DisplayName("CMT-001: 루트 스레드 생성 - 사용자는 자신의 글귀를 스레드로 등록할 수 있다")
     void createThread_createsRootThread() {
         // given
+        Integer userId = 1;
         CreateCommunityThreadRequest request = new CreateCommunityThreadRequest();
-        ReflectionTestUtils.setField(request, "userId", 1);
         ReflectionTestUtils.setField(request, "quoteId", 10);
 
-        CommunityThread saved = createThreadEntity(100, 1, 10, false, 0, false);
+        CommunityThread saved = createThreadEntity(100, userId, 10, false, 0, false);
 
         ArgumentCaptor<CommunityThread> captor = ArgumentCaptor.forClass(CommunityThread.class);
         when(communityThreadRepository.save(any(CommunityThread.class))).thenReturn(saved);
 
         // when
-        CommunityThreadCommandResponse response = communityThreadCommandService.createThread(request);
+        CommunityThreadCommandResponse response =
+                communityThreadCommandService.createThread(userId, request);
 
         // then
         verify(communityThreadRepository).save(captor.capture());
@@ -123,10 +124,11 @@ class CommunityThreadCommandServiceTest {
     }
 
     @Test
-    @DisplayName("CMT-002: 스레드 글귀 수정 - 수정 후 updated 플래그가 true")
-    void updateThread_updatesQuote() {
+    @DisplayName("CMT-002: 스레드 글귀 수정 - 작성자 본인이면 수정 가능하고 updated 플래그가 true")
+    void updateThread_updatesQuote_whenOwner() {
         // given
-        CommunityThread existing = createThreadEntity(100, 1, 10, false, 0, true);
+        Integer ownerId = 1;
+        CommunityThread existing = createThreadEntity(100, ownerId, 10, false, 0, true);
         when(communityThreadRepository.findByIdAndDeletedFalse(100))
                 .thenReturn(Optional.of(existing));
 
@@ -134,13 +136,36 @@ class CommunityThreadCommandServiceTest {
         ReflectionTestUtils.setField(request, "quoteId", 20);
 
         // when
-        CommunityThreadCommandResponse response = communityThreadCommandService.updateThread(100, request);
+        CommunityThreadCommandResponse response =
+                communityThreadCommandService.updateThread(100, ownerId, request);
 
         // then
         assertThat(existing.getQuoteId()).isEqualTo(20);
         assertThat(response.getThreadId()).isEqualTo(100);
         // updatedAt 이 존재한다고 가정 → "수정됨" 표시용
         assertThat(response.isUpdated()).isTrue();
+    }
+
+    @Test
+    @DisplayName("CMT-002: 스레드 수정 시 소유자가 아니면 403 FORBIDDEN")
+    void updateThread_forbiddenWhenNotOwner() {
+        // given
+        Integer ownerId = 1;
+        Integer otherUserId = 2;
+
+        CommunityThread existing = createThreadEntity(100, ownerId, 10, false, 0, true);
+        when(communityThreadRepository.findByIdAndDeletedFalse(100))
+                .thenReturn(Optional.of(existing));
+
+        UpdateCommunityThreadRequest request = new UpdateCommunityThreadRequest();
+        ReflectionTestUtils.setField(request, "quoteId", 20);
+
+        // when & then
+        assertThatThrownBy(() ->
+                communityThreadCommandService.updateThread(100, otherUserId, request))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting("statusCode")
+                .isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     @Test
@@ -154,17 +179,19 @@ class CommunityThreadCommandServiceTest {
         ReflectionTestUtils.setField(request, "quoteId", 20);
 
         // when & then
-        assertThatThrownBy(() -> communityThreadCommandService.updateThread(999, request))
+        assertThatThrownBy(() ->
+                communityThreadCommandService.updateThread(999, 1, request))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting("statusCode")
                 .isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test
-    @DisplayName("CMT-003: 루트 스레드 삭제 시 자신과 모든 릴레이가 소프트 삭제된다")
-    void deleteThread_rootCascade() {
+    @DisplayName("CMT-003: 루트 스레드 삭제 시 자신과 모든 릴레이가 소프트 삭제된다(작성자 본인)")
+    void deleteThread_rootCascade_whenOwner() {
         // given
-        CommunityThread root = createThreadEntity(1, 1, 10, false, 0, false);
+        Integer ownerId = 1;
+        CommunityThread root = createThreadEntity(1, ownerId, 10, false, 0, false);
         CommunityThread child1 = createReplyEntity(2, root, 2, 11, false, false);
         CommunityThread child2 = createReplyEntity(3, root, 3, 12, false, false);
 
@@ -172,7 +199,7 @@ class CommunityThreadCommandServiceTest {
                 .thenReturn(Optional.of(root));
 
         // when
-        communityThreadCommandService.deleteThread(1);
+        communityThreadCommandService.deleteThread(1, ownerId);
 
         // then
         assertThat(root.isDeleted()).isTrue();
@@ -181,8 +208,29 @@ class CommunityThreadCommandServiceTest {
     }
 
     @Test
-    @DisplayName("CMT-003: 루트가 아닌 스레드를 deleteThread 로 삭제하면 자기 자신만 소프트 삭제된다")
-    void deleteThread_nonRootDeletesOnlySelf() {
+    @DisplayName("CMT-003: 루트 스레드 삭제 시 작성자가 아니면 403 FORBIDDEN")
+    void deleteThread_root_forbiddenWhenNotOwner() {
+        // given
+        Integer ownerId = 1;
+        Integer otherUserId = 2;
+
+        CommunityThread root = createThreadEntity(1, ownerId, 10, false, 0, false);
+        when(communityThreadRepository.findByIdAndDeletedFalse(1))
+                .thenReturn(Optional.of(root));
+
+        // when & then
+        assertThatThrownBy(() ->
+                communityThreadCommandService.deleteThread(1, otherUserId))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting("statusCode")
+                .isEqualTo(HttpStatus.FORBIDDEN);
+
+        assertThat(root.isDeleted()).isFalse();
+    }
+
+    @Test
+    @DisplayName("CMT-003: 루트가 아닌 스레드를 deleteThread 로 삭제하면 자기 자신만 소프트 삭제된다(작성자 본인)")
+    void deleteThread_nonRootDeletesOnlySelf_whenOwner() {
         // given
         CommunityThread root = createThreadEntity(1, 1, 10, false, 0, false);
         CommunityThread child = createReplyEntity(2, root, 2, 11, false, false);
@@ -191,7 +239,7 @@ class CommunityThreadCommandServiceTest {
                 .thenReturn(Optional.of(child));
 
         // when
-        communityThreadCommandService.deleteThread(2);
+        communityThreadCommandService.deleteThread(2, 2);
 
         // then
         assertThat(child.isDeleted()).isTrue();
@@ -199,15 +247,38 @@ class CommunityThreadCommandServiceTest {
     }
 
     @Test
+    @DisplayName("CMT-003: 루트가 아닌 스레드 삭제 시 작성자가 아니면 403 FORBIDDEN")
+    void deleteThread_nonRoot_forbiddenWhenNotOwner() {
+        // given
+        CommunityThread root = createThreadEntity(1, 1, 10, false, 0, false);
+        CommunityThread child = createReplyEntity(2, root, 2, 11, false, false);
+
+        when(communityThreadRepository.findByIdAndDeletedFalse(2))
+                .thenReturn(Optional.of(child));
+
+        // when & then
+        assertThatThrownBy(() ->
+                communityThreadCommandService.deleteThread(2, 999))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting("statusCode")
+                .isEqualTo(HttpStatus.FORBIDDEN);
+
+        assertThat(child.isDeleted()).isFalse();
+        assertThat(root.isDeleted()).isFalse();
+    }
+
+    @Test
     @DisplayName("CMT-007: 특정 스레드에 자신의 글귀로 릴레이(답변)를 등록할 수 있다")
     void createReply_createsChildThread() {
         // given
-        CommunityThread parent = createThreadEntity(1, 1, 10, false, 0, false);
+        Integer parentOwnerId = 1;
+        Integer replyUserId = 2;
+
+        CommunityThread parent = createThreadEntity(1, parentOwnerId, 10, false, 0, false);
         when(communityThreadRepository.findByIdAndDeletedFalse(1))
                 .thenReturn(Optional.of(parent));
 
         CreateCommunityReplyRequest request = new CreateCommunityReplyRequest();
-        ReflectionTestUtils.setField(request, "userId", 2);
         ReflectionTestUtils.setField(request, "quoteId", 20);
 
         when(communityThreadRepository.save(any(CommunityThread.class)))
@@ -219,7 +290,8 @@ class CommunityThreadCommandServiceTest {
                 });
 
         // when
-        CommunityReplyCommandResponse response = communityThreadCommandService.createReply(1, request);
+        CommunityReplyCommandResponse response =
+                communityThreadCommandService.createReply(1, replyUserId, request);
 
         // then
         verify(communityThreadRepository).save(any(CommunityThread.class));
@@ -235,10 +307,12 @@ class CommunityThreadCommandServiceTest {
 
     @Test
     @DisplayName("CMT-008: 사용자는 자신의 답변(릴레이)을 다른 글귀로 수정할 수 있다")
-    void updateReply_updatesQuote() {
+    void updateReply_updatesQuote_whenOwner() {
         // given
+        Integer replyOwnerId = 2;
+
         CommunityThread parent = createThreadEntity(1, 1, 10, false, 0, false);
-        CommunityThread reply = createReplyEntity(2, parent, 2, 20, false, true);
+        CommunityThread reply = createReplyEntity(2, parent, replyOwnerId, 20, false, true);
 
         when(communityThreadRepository.findByIdAndDeletedFalse(2))
                 .thenReturn(Optional.of(reply));
@@ -247,7 +321,8 @@ class CommunityThreadCommandServiceTest {
         ReflectionTestUtils.setField(request, "quoteId", 30);
 
         // when
-        CommunityReplyCommandResponse response = communityThreadCommandService.updateReply(2, request);
+        CommunityReplyCommandResponse response =
+                communityThreadCommandService.updateReply(2, replyOwnerId, request);
 
         // then
         assertThat(reply.getQuoteId()).isEqualTo(30);
@@ -256,20 +331,70 @@ class CommunityThreadCommandServiceTest {
     }
 
     @Test
-    @DisplayName("CMT-009: 사용자가 등록한 답변을 삭제하면 해당 답변만 소프트 삭제된다")
-    void deleteReply_softDeleteOnlyReply() {
+    @DisplayName("CMT-008: 답변 수정 시 작성자가 아니면 403 FORBIDDEN")
+    void updateReply_forbiddenWhenNotOwner() {
         // given
+        Integer replyOwnerId = 2;
+        Integer otherUserId = 3;
+
         CommunityThread parent = createThreadEntity(1, 1, 10, false, 0, false);
-        CommunityThread reply = createReplyEntity(2, parent, 2, 20, false, false);
+        CommunityThread reply = createReplyEntity(2, parent, replyOwnerId, 20, false, true);
+
+        when(communityThreadRepository.findByIdAndDeletedFalse(2))
+                .thenReturn(Optional.of(reply));
+
+        UpdateCommunityReplyRequest request = new UpdateCommunityReplyRequest();
+        ReflectionTestUtils.setField(request, "quoteId", 30);
+
+        // when & then
+        assertThatThrownBy(() ->
+                communityThreadCommandService.updateReply(2, otherUserId, request))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting("statusCode")
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    @DisplayName("CMT-009: 사용자가 등록한 답변을 삭제하면 해당 답변만 소프트 삭제된다")
+    void deleteReply_softDeleteOnlyReply_whenOwner() {
+        // given
+        Integer replyOwnerId = 2;
+
+        CommunityThread parent = createThreadEntity(1, 1, 10, false, 0, false);
+        CommunityThread reply = createReplyEntity(2, parent, replyOwnerId, 20, false, false);
 
         when(communityThreadRepository.findByIdAndDeletedFalse(2))
                 .thenReturn(Optional.of(reply));
 
         // when
-        communityThreadCommandService.deleteReply(2);
+        communityThreadCommandService.deleteReply(2, replyOwnerId);
 
         // then
         assertThat(reply.isDeleted()).isTrue();
+        assertThat(parent.isDeleted()).isFalse();
+    }
+
+    @Test
+    @DisplayName("CMT-009: 답변 삭제 시 작성자가 아니면 403 FORBIDDEN")
+    void deleteReply_forbiddenWhenNotOwner() {
+        // given
+        Integer replyOwnerId = 2;
+        Integer otherUserId = 3;
+
+        CommunityThread parent = createThreadEntity(1, 1, 10, false, 0, false);
+        CommunityThread reply = createReplyEntity(2, parent, replyOwnerId, 20, false, false);
+
+        when(communityThreadRepository.findByIdAndDeletedFalse(2))
+                .thenReturn(Optional.of(reply));
+
+        // when & then
+        assertThatThrownBy(() ->
+                communityThreadCommandService.deleteReply(2, otherUserId))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting("statusCode")
+                .isEqualTo(HttpStatus.FORBIDDEN);
+
+        assertThat(reply.isDeleted()).isFalse();
         assertThat(parent.isDeleted()).isFalse();
     }
 
@@ -281,7 +406,8 @@ class CommunityThreadCommandServiceTest {
                 .thenReturn(Optional.empty());
 
         // when & then
-        assertThatThrownBy(() -> communityThreadCommandService.deleteReply(999))
+        assertThatThrownBy(() ->
+                communityThreadCommandService.deleteReply(999, 1))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting("statusCode")
                 .isEqualTo(HttpStatus.NOT_FOUND);

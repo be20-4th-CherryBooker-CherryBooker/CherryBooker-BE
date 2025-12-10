@@ -4,6 +4,7 @@ import com.cherry.cherrybookerbe.notification.command.domain.entity.Notification
 import com.cherry.cherrybookerbe.notification.command.domain.entity.NotificationSendLog;
 import com.cherry.cherrybookerbe.notification.command.domain.entity.NotificationTemplate;
 import com.cherry.cherrybookerbe.notification.command.domain.enums.NotificationSendStatus;
+import com.cherry.cherrybookerbe.notification.command.domain.enums.NotificationTemplateType;
 import com.cherry.cherrybookerbe.notification.command.domain.repository.NotificationRepository;
 import com.cherry.cherrybookerbe.notification.command.domain.repository.NotificationSendLogRepository;
 import com.cherry.cherrybookerbe.notification.command.domain.repository.NotificationTemplateRepository;
@@ -16,10 +17,12 @@ import com.cherry.cherrybookerbe.notification.command.event.NotificationCreatedE
 import com.cherry.cherrybookerbe.notification.command.event.NotificationReadEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -52,7 +55,9 @@ public class NotificationCommandService {
     public NotificationTemplateResponse updateTemplate(Integer templateId,
                                                        NotificationTemplateUpdateRequest request) {
         NotificationTemplate template = templateRepository.findById(templateId)
-                .orElseThrow(() -> new IllegalArgumentException("템플릿을 찾을 수 없습니다."));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "템플릿을 찾을 수 없습니다."));
+
 
         template.update(request.getTitle(), request.getBody(), request.getTemplateType());
         return NotificationTemplateResponse.from(template);
@@ -60,7 +65,15 @@ public class NotificationCommandService {
 
     public void deleteTemplate(Integer templateId) {
         NotificationTemplate template = templateRepository.findById(templateId)
-                .orElseThrow(() -> new IllegalArgumentException("템플릿을 찾을 수 없습니다."));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "템플릿을 찾을 수 없습니다."));
+
+        // EVENT_* 타입은 삭제 금지
+        if (template.getType() != NotificationTemplateType.SYSTEM) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "이 템플릿은 삭제할 수 없습니다. (시스템 이벤트 템플릿)");
+        }
+
         template.markDeleted();
     }
 
@@ -70,10 +83,12 @@ public class NotificationCommandService {
                                                        NotificationSendRequest request) {
 
         NotificationTemplate template = templateRepository.findById(templateId)
-                .orElseThrow(() -> new IllegalArgumentException("템플릿을 찾을 수 없습니다."));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "템플릿을 찾을 수 없습니다."));
 
         if (template.isDeleted()) {
-            throw new IllegalStateException("삭제된 템플릿입니다.");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "삭제된 템플릿입니다.");
         }
 
         String mergedTitle = mergeVariables(template.getTitle(), request.getVariables());
@@ -122,10 +137,12 @@ public class NotificationCommandService {
 
     public void markRead(Integer userId, Integer notificationId) {
         Notification notification = notificationRepository.findById(notificationId)
-                .orElseThrow(() -> new IllegalArgumentException("알림을 찾을 수 없습니다."));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "알림을 찾을 수 없습니다."));
 
         if (!Objects.equals(notification.getUserId(), userId)) {
-            throw new IllegalStateException("다른 사용자의 알림은 변경할 수 없습니다.");
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "다른 사용자의 알림은 변경할 수 없습니다.");
         }
 
         if (!notification.isRead()) {
@@ -162,10 +179,12 @@ public class NotificationCommandService {
 
     public void deleteNotification(Integer userId, Integer notificationId) {
         Notification notification = notificationRepository.findById(notificationId)
-                .orElseThrow(() -> new IllegalArgumentException("알림을 찾을 수 없습니다."));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "알림을 찾을 수 없습니다."));
 
         if (!Objects.equals(notification.getUserId(), userId)) {
-            throw new IllegalStateException("다른 사용자의 알림은 삭제할 수 없습니다.");
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "다른 사용자의 알림은 삭제할 수 없습니다.");
         }
 
         notificationRepository.delete(notification);

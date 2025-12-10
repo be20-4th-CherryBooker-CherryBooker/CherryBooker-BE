@@ -7,9 +7,6 @@ import lombok.Getter;
 public class CreateCommunityThreadRequest {
 
     @NotNull
-    private Integer userId;
-
-    @NotNull
     private Integer quoteId;
 
 }

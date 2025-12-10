@@ -27,9 +27,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.server.ResponseStatusException;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -60,7 +62,7 @@ class NotificationCommandServiceTest {
     void createTemplate_createsNotificationTemplate() {
         // given
         NotificationTemplateCreateRequest request = NotificationTemplateCreateRequest.builder()
-                .templateType(NotificationTemplateType.EVENT)
+                .templateType(NotificationTemplateType.EVENT_THREAD_REPLY)
                 .title("답변 알림 템플릿")
                 .body("{{nickname}}님이 답변을 남겼습니다.")
                 .build();
@@ -79,7 +81,7 @@ class NotificationCommandServiceTest {
 
         // then
         assertThat(response.getTemplateId()).isEqualTo(1);
-        assertThat(response.getTemplateType()).isEqualTo(NotificationTemplateType.EVENT);
+        assertThat(response.getTemplateType()).isEqualTo(NotificationTemplateType.EVENT_THREAD_REPLY);
         assertThat(response.getTitle()).isEqualTo("답변 알림 템플릿");
     }
 
@@ -97,7 +99,7 @@ class NotificationCommandServiceTest {
         when(templateRepository.findById(1)).thenReturn(Optional.of(existing));
 
         NotificationTemplateUpdateRequest request = NotificationTemplateUpdateRequest.builder()
-                .templateType(NotificationTemplateType.EVENT)
+                .templateType(NotificationTemplateType.EVENT_THREAD_REPLY)
                 .title("수정된 제목")
                 .body("수정된 본문")
                 .build();
@@ -108,14 +110,14 @@ class NotificationCommandServiceTest {
         // then
         assertThat(existing.getTitle()).isEqualTo("수정된 제목");
         assertThat(existing.getBody()).isEqualTo("수정된 본문");
-        assertThat(existing.getType()).isEqualTo(NotificationTemplateType.EVENT);
+        assertThat(existing.getType()).isEqualTo(NotificationTemplateType.EVENT_THREAD_REPLY);
 
         assertThat(response.getTemplateId()).isEqualTo(1);
         assertThat(response.getTitle()).isEqualTo("수정된 제목");
     }
 
     @Test
-    @DisplayName("NTF-004: 관리자는 템플릿을 삭제(소프트 삭제)할 수 있다")
+    @DisplayName("NTF-004: SYSTEM 타입 템플릿은 삭제(소프트 삭제)할 수 있다")
     void deleteTemplate_marksTemplateDeleted() {
         // given
         NotificationTemplate template = NotificationTemplate.builder()
@@ -213,7 +215,7 @@ class NotificationCommandServiceTest {
     }
 
     @Test
-    @DisplayName("삭제된 템플릿으로 알림 발송 시 예외가 발생한다")
+    @DisplayName("삭제된 템플릿으로 알림 발송 시 BAD_REQUEST 예외가 발생한다")
     void sendByTemplate_deletedTemplate_throwsException() {
         // given
         NotificationTemplate template = NotificationTemplate.builder()
@@ -222,6 +224,7 @@ class NotificationCommandServiceTest {
                 .type(NotificationTemplateType.SYSTEM)
                 .build();
         template.markDeleted();
+
         when(templateRepository.findById(1)).thenReturn(Optional.of(template));
 
         NotificationSendRequest request = NotificationSendRequest.builder()
@@ -230,8 +233,9 @@ class NotificationCommandServiceTest {
 
         // when & then
         assertThatThrownBy(() -> notificationCommandService.sendByTemplate(1, request))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("삭제된 템플릿");
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting("statusCode")
+                .isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     // ============ 알림함 읽음 / 삭제 ============
@@ -277,7 +281,7 @@ class NotificationCommandServiceTest {
     }
 
     @Test
-    @DisplayName("다른 사용자의 알림을 읽음 처리하려 하면 예외가 발생한다")
+    @DisplayName("다른 사용자의 알림을 읽음 처리하려 하면 FORBIDDEN 예외가 발생한다")
     void markRead_otherUsersNotification_throwsException() {
         // given
         Notification notification = Notification.builder()
@@ -291,8 +295,9 @@ class NotificationCommandServiceTest {
 
         // when & then
         assertThatThrownBy(() -> notificationCommandService.markRead(2, 100))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("다른 사용자의 알림");
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting("statusCode")
+                .isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     @Test
@@ -381,7 +386,7 @@ class NotificationCommandServiceTest {
     }
 
     @Test
-    @DisplayName("알림함 - 다른 사용자의 알림 삭제 시 예외 발생")
+    @DisplayName("알림함 - 다른 사용자의 알림 삭제 시 FORBIDDEN 예외 발생")
     void deleteNotification_otherUsersNotification_throwsException() {
         // given
         Notification notification = Notification.builder()
@@ -395,8 +400,9 @@ class NotificationCommandServiceTest {
 
         // when & then
         assertThatThrownBy(() -> notificationCommandService.deleteNotification(2, 100))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("다른 사용자의 알림");
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting("statusCode")
+                .isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     @Test

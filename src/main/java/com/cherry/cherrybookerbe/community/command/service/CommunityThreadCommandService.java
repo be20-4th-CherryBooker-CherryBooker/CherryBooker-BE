@@ -26,10 +26,11 @@ public class CommunityThreadCommandService {
     // ================== 최초 스레드 ==================
 
     // 루트(최초) 스레드 생성
-    public CommunityThreadCommandResponse createThread(CreateCommunityThreadRequest request) {
+    public CommunityThreadCommandResponse createThread(Integer userId,
+                                                       CreateCommunityThreadRequest request) {
         CommunityThread thread = CommunityThread.builder()
-                .parent(null)                      // 루트 스레드
-                .userId(request.getUserId())
+                .parent(null)
+                .userId(userId)
                 .quoteId(request.getQuoteId())
                 .build();
 
@@ -39,25 +40,32 @@ public class CommunityThreadCommandService {
     }
 
     // 루트/릴레이 공통 업데이트
-    public CommunityThreadCommandResponse updateThread(Integer threadId, UpdateCommunityThreadRequest request) {
+    public CommunityThreadCommandResponse updateThread(Integer threadId,
+                                                       Integer userId,
+                                                       UpdateCommunityThreadRequest request) {
         CommunityThread thread = communityThreadRepository.findByIdAndDeletedFalse(threadId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Thread not found: " + threadId));
 
-        thread.updateThread(request.getQuoteId());
+        if (!thread.getUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "본인이 작성한 스레드만 수정할 수 있습니다.");
+        }
 
+        thread.updateThread(request.getQuoteId());
         return new CommunityThreadCommandResponse(thread.getId(), thread.isUpdated());
     }
 
     // 삭제: 루트면 자식까지, 릴레이면 자기만
-    public void deleteThread(Integer threadId) {
+    public void deleteThread(Integer threadId, Integer userId) {
         CommunityThread thread = communityThreadRepository.findByIdAndDeletedFalse(threadId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Thread not found: " + threadId));
 
+        if (!thread.getUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "본인이 작성한 스레드만 삭제할 수 있습니다.");
+        }
+
         if (thread.isRoot()) {
-            // 최초 스레드 삭제 → 밑에 달린 릴레이까지 전부 삭제
             thread.markDeletedCascade();
         } else {
-            // 릴레이인데 /{threadId} 로 직접 들어온 경우 보호를 위해 자기만 삭제
             thread.markDeletedOnly();
         }
     }
@@ -65,13 +73,15 @@ public class CommunityThreadCommandService {
     // ================== 릴레이(답글) ==================
 
     // 릴레이 생성 (parentId = threadId)
-    public CommunityReplyCommandResponse createReply(Integer parentThreadId, CreateCommunityReplyRequest request) {
+    public CommunityReplyCommandResponse createReply(Integer parentThreadId,
+                                                     Integer userId,
+                                                     CreateCommunityReplyRequest request) {
         CommunityThread parent = communityThreadRepository.findByIdAndDeletedFalse(parentThreadId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Thread not found: " + parentThreadId));
 
         CommunityThread reply = CommunityThread.builder()
-                .parent(parent)                   // 부모 스레드 지정
-                .userId(request.getUserId())
+                .parent(parent)
+                .userId(userId)
                 .quoteId(request.getQuoteId())
                 .build();
 
@@ -82,20 +92,28 @@ public class CommunityThreadCommandService {
         return new CommunityReplyCommandResponse(saved.getId(), saved.isUpdated(), saved.getUpdatedAt());
     }
 
-    public CommunityReplyCommandResponse updateReply(Integer replyId, UpdateCommunityReplyRequest request) {
+    public CommunityReplyCommandResponse updateReply(Integer replyId,
+                                                     Integer userId,
+                                                     UpdateCommunityReplyRequest request) {
         CommunityThread reply = communityThreadRepository.findByIdAndDeletedFalse(replyId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reply not found: " + replyId));
 
-        reply.updateThread(request.getQuoteId());
+        if (!reply.getUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "본인이 작성한 답글만 수정할 수 있습니다.");
+        }
 
+        reply.updateThread(request.getQuoteId());
         return new CommunityReplyCommandResponse(reply.getId(), reply.isUpdated(), reply.getUpdatedAt());
     }
 
-    public void deleteReply(Integer replyId) {
+    public void deleteReply(Integer replyId, Integer userId) {
         CommunityThread reply = communityThreadRepository.findByIdAndDeletedFalse(replyId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reply not found: " + replyId));
 
-        // 릴레이만 삭제 (루트 삭제 로직은 deleteThread 에서 처리)
+        if (!reply.getUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "본인이 작성한 답글만 삭제할 수 있습니다.");
+        }
+
         reply.markDeletedOnly();
     }
 }

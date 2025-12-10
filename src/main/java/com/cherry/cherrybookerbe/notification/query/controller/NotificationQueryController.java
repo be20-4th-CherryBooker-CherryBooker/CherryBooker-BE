@@ -32,7 +32,7 @@ public class NotificationQueryController {
     public ResponseEntity<ApiResponse<NotificationPageResponse>> getMyNotifications(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(required = false) Integer size,
-            @AuthenticationPrincipal(expression = "id") Integer userId
+            @AuthenticationPrincipal(expression = "userId") Integer userId
     ) {
         if (userId == null) {
             throw new AccessDeniedException("인증 정보가 없습니다.");
@@ -44,7 +44,7 @@ public class NotificationQueryController {
 
     @GetMapping("/api/notifications/me/unread-count")
     public ResponseEntity<ApiResponse<Long>> getMyUnreadCount(
-            @AuthenticationPrincipal(expression = "id") Integer userId
+            @AuthenticationPrincipal(expression = "userId") Integer userId
     ) {
         if (userId == null) {
             throw new AccessDeniedException("인증 정보가 없습니다.");
@@ -75,7 +75,7 @@ public class NotificationQueryController {
             produces = MediaType.TEXT_EVENT_STREAM_VALUE
     )
     public SseEmitter stream(
-            @AuthenticationPrincipal(expression = "id") Integer userId
+            @AuthenticationPrincipal(expression = "userId") Integer userId
     ) {
         if (userId == null) {
             throw new AccessDeniedException("인증 정보가 없습니다.");
