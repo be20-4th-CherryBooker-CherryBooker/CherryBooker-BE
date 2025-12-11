@@ -128,12 +128,13 @@ public class CommunityThreadQueryService {
                 .collect(Collectors.toMap(User::getUserId, u -> u));
 
         String threadContent = getQuoteContent(quoteMap, thread.getQuoteId());
+        String nickname = getUserNickname(userMap, thread.getUserId());
 
         List<CommunityReplyResponse> replies = thread.getChildren().stream()
                 .map(child -> mapReply(child, quoteMap, userMap))
                 .toList();
 
-        return mapThreadDetail(thread, threadContent, replies, userMap);
+        return mapThreadDetail(thread, nickname, threadContent, replies);
     }
 
 
@@ -175,15 +176,13 @@ public class CommunityThreadQueryService {
 
 
     private CommunityThreadDetailResponse mapThreadDetail(CommunityThread thread,
+                                                          String userNickname,
                                                           String quoteContent,
-                                                          List<CommunityReplyResponse> replies,
-                                                          Map<Integer, User> userMap) {
-        String nickname = getUserNickname(userMap, thread.getUserId());
-
+                                                          List<CommunityReplyResponse> replies) {
         return new CommunityThreadDetailResponse(
                 thread.getId(),
                 thread.getUserId(),
-                nickname,
+                userNickname,
                 thread.getQuoteId(),
                 quoteContent,
                 thread.getCreatedAt(),
@@ -195,11 +194,11 @@ public class CommunityThreadQueryService {
         );
     }
 
-
     private CommunityReplyResponse mapReply(CommunityThread reply,
                                             Map<Long, Quote> quoteMap,
                                             Map<Integer, User> userMap) {
-        String nickname = getUserNickname(userMap, reply.getUserId());
+        User author = userMap.get(reply.getUserId());
+        String nickname = author != null ? author.getUserNickname() : "알 수 없음";
 
         return new CommunityReplyResponse(
                 reply.getId(),
