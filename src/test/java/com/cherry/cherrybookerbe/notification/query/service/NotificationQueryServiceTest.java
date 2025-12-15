@@ -11,16 +11,18 @@ import com.cherry.cherrybookerbe.notification.command.domain.repository.Notifica
 import com.cherry.cherrybookerbe.notification.command.domain.repository.NotificationTemplateRepository;
 import com.cherry.cherrybookerbe.notification.command.dto.response.NotificationTemplateResponse;
 import com.cherry.cherrybookerbe.notification.query.dto.response.*;
-import java.time.LocalDateTime;
-import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.*;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -46,28 +48,23 @@ class NotificationQueryServiceTest {
         // given
         LocalDateTime now = LocalDateTime.now();
 
-        Notification n1 = Notification.builder()
-                .userId(1)
-                .title("알림1")
-                .content("내용1")
-                .build();
+        Notification n1 = Notification.builder().userId(1).title("알림1").content("내용1").build();
         ReflectionTestUtils.setField(n1, "id", 1);
         ReflectionTestUtils.setField(n1, "read", false);
         ReflectionTestUtils.setField(n1, "createdAt", now.minusMinutes(1));
 
-        Notification n2 = Notification.builder()
-                .userId(1)
-                .title("알림2")
-                .content("내용2")
-                .build();
+        Notification n2 = Notification.builder().userId(1).title("알림2").content("내용2").build();
         ReflectionTestUtils.setField(n2, "id", 2);
         ReflectionTestUtils.setField(n2, "read", true);
         ReflectionTestUtils.setField(n2, "createdAt", now.minusMinutes(5));
 
-        PageRequest pageable = PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<Notification> page = new PageImpl<>(List.of(n1, n2), pageable, 2);
+        Page<Notification> page = new PageImpl<>(
+                List.of(n1, n2),
+                PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "createdAt")),
+                2
+        );
 
-        when(notificationRepository.findByUserIdOrderByCreatedAtDesc(1, pageable))
+        when(notificationRepository.findByUserIdOrderByCreatedAtDesc(eq(1), any(Pageable.class)))
                 .thenReturn(page);
 
         // when
@@ -85,6 +82,15 @@ class NotificationQueryServiceTest {
         assertThat(pagination.getCurrentPage()).isEqualTo(0);
         assertThat(pagination.getTotalPages()).isEqualTo(1);
         assertThat(pagination.getTotalItems()).isEqualTo(2);
+
+        // Pageable 검증(정렬/사이즈)
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(notificationRepository).findByUserIdOrderByCreatedAtDesc(eq(1), pageableCaptor.capture());
+        Pageable used = pageableCaptor.getValue();
+        assertThat(used.getPageNumber()).isEqualTo(0);
+        assertThat(used.getPageSize()).isEqualTo(10);
+        assertThat(used.getSort().getOrderFor("createdAt")).isNotNull();
+        assertThat(used.getSort().getOrderFor("createdAt").getDirection()).isEqualTo(Sort.Direction.DESC);
     }
 
     @Test
@@ -105,33 +111,38 @@ class NotificationQueryServiceTest {
     void getTemplates_withoutKeyword_returnsTemplatePage() {
         // given
         NotificationTemplate t1 = NotificationTemplate.builder()
-                .title("신고 알림")
-                .body("신고 본문")
+                .title("시스템 공지")
+                .body("본문1")
                 .type(NotificationTemplateType.SYSTEM)
                 .build();
         ReflectionTestUtils.setField(t1, "id", 1);
 
         NotificationTemplate t2 = NotificationTemplate.builder()
                 .title("답변 알림")
-                .body("답변 본문")
+                .body("본문2")
                 .type(NotificationTemplateType.EVENT_THREAD_REPLY)
                 .build();
         ReflectionTestUtils.setField(t2, "id", 2);
 
-        PageRequest pageable = PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<NotificationTemplate> page = new PageImpl<>(List.of(t1, t2), pageable, 2);
+        Page<NotificationTemplate> page = new PageImpl<>(
+                List.of(t1, t2),
+                PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "createdAt")),
+                2
+        );
 
-        when(templateRepository.findByDeletedFalse(pageable)).thenReturn(page);
+        when(templateRepository.findByDeletedFalse(any(Pageable.class))).thenReturn(page);
 
         // when
         NotificationTemplatePageResponse response =
                 notificationQueryService.getTemplates(null, 0, 10);
 
         // then
-        assertThat(response.getTemplates()).extracting(NotificationTemplateResponse::getTemplateId)
+        assertThat(response.getTemplates())
+                .extracting(NotificationTemplateResponse::getTemplateId)
                 .containsExactly(1, 2);
 
         Pagination pagination = response.getPagination();
+        assertThat(pagination.getCurrentPage()).isEqualTo(0);
         assertThat(pagination.getTotalItems()).isEqualTo(2);
     }
 
@@ -146,10 +157,13 @@ class NotificationQueryServiceTest {
                 .build();
         ReflectionTestUtils.setField(t1, "id", 2);
 
-        PageRequest pageable = PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<NotificationTemplate> page = new PageImpl<>(List.of(t1), pageable, 1);
+        Page<NotificationTemplate> page = new PageImpl<>(
+                List.of(t1),
+                PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "createdAt")),
+                1
+        );
 
-        when(templateRepository.findByDeletedFalseAndTitleContainingIgnoreCase("답변", pageable))
+        when(templateRepository.findByDeletedFalseAndTitleContainingIgnoreCase(eq("답변"), any(Pageable.class)))
                 .thenReturn(page);
 
         // when
@@ -180,10 +194,13 @@ class NotificationQueryServiceTest {
                 .build();
         ReflectionTestUtils.setField(log1, "id", 100);
 
-        PageRequest pageable = PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "sentAt"));
-        Page<NotificationSendLog> page = new PageImpl<>(List.of(log1), pageable, 1);
+        Page<NotificationSendLog> page = new PageImpl<>(
+                List.of(log1),
+                PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "sentAt")),
+                1
+        );
 
-        when(sendLogRepository.findAllByOrderBySentAtDesc(pageable))
+        when(sendLogRepository.findAllByOrderBySentAtDesc(any(Pageable.class)))
                 .thenReturn(page);
 
         // when
@@ -195,6 +212,7 @@ class NotificationQueryServiceTest {
         NotificationSendLogResponse item = response.getLogs().get(0);
         assertThat(item.getSendLogId()).isEqualTo(100);
         assertThat(item.getTemplateId()).isEqualTo(10);
+        assertThat(item.getTemplateTitle()).isEqualTo("답변 알림");
         assertThat(item.getStatus()).isEqualTo(NotificationSendStatus.SUCCESS);
 
         Pagination pagination = response.getPagination();
