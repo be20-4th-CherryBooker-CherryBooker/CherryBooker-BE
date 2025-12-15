@@ -8,6 +8,9 @@ import com.cherry.cherrybookerbe.community.command.dto.request.UpdateCommunityRe
 import com.cherry.cherrybookerbe.community.command.dto.request.UpdateCommunityThreadRequest;
 import com.cherry.cherrybookerbe.community.command.dto.response.CommunityReplyCommandResponse;
 import com.cherry.cherrybookerbe.community.command.dto.response.CommunityThreadCommandResponse;
+import com.cherry.cherrybookerbe.notification.command.event.ThreadReplyCreatedEvent;
+import com.cherry.cherrybookerbe.user.command.domain.entity.User;
+import com.cherry.cherrybookerbe.user.command.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
@@ -17,6 +20,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
@@ -30,6 +34,12 @@ class CommunityThreadCommandServiceTest {
 
     @Mock
     private CommunityThreadRepository communityThreadRepository;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private CommunityThreadCommandService communityThreadCommandService;
@@ -51,7 +61,7 @@ class CommunityThreadCommandServiceTest {
         }
 
         LocalDateTime createdAt = LocalDateTime.now().minusMinutes(10);
-        LocalDateTime updatedAt = updated ? LocalDateTime.now() : null;
+        LocalDateTime updatedAt = updated ? createdAt.plusMinutes(1) : null;
 
         ReflectionTestUtils.setField(thread, "createdAt", createdAt);
         ReflectionTestUtils.setField(thread, "updatedAt", updatedAt);
@@ -78,7 +88,7 @@ class CommunityThreadCommandServiceTest {
         }
 
         LocalDateTime createdAt = LocalDateTime.now().minusMinutes(5);
-        LocalDateTime updatedAt = updated ? LocalDateTime.now() : null;
+        LocalDateTime updatedAt = updated ? createdAt.plusMinutes(1) : null;
 
         ReflectionTestUtils.setField(reply, "createdAt", createdAt);
         ReflectionTestUtils.setField(reply, "updatedAt", updatedAt);
@@ -112,14 +122,11 @@ class CommunityThreadCommandServiceTest {
         verify(communityThreadRepository).save(captor.capture());
         CommunityThread toSave = captor.getValue();
 
-        // 루트 스레드인지 확인
         assertThat(toSave.getParent()).isNull();
         assertThat(toSave.getUserId()).isEqualTo(1);
         assertThat(toSave.getQuoteId()).isEqualTo(10);
 
-        // 응답 검증
         assertThat(response.getThreadId()).isEqualTo(100);
-        // 생성 직후에는 updated=false 여야 "수정됨"이 안 붙음
         assertThat(response.isUpdated()).isFalse();
     }
 
@@ -142,7 +149,6 @@ class CommunityThreadCommandServiceTest {
         // then
         assertThat(existing.getQuoteId()).isEqualTo(20);
         assertThat(response.getThreadId()).isEqualTo(100);
-        // updatedAt 이 존재한다고 가정 → "수정됨" 표시용
         assertThat(response.isUpdated()).isTrue();
     }
 
@@ -268,8 +274,8 @@ class CommunityThreadCommandServiceTest {
     }
 
     @Test
-    @DisplayName("CMT-007: 특정 스레드에 자신의 글귀로 릴레이(답변)를 등록할 수 있다")
-    void createReply_createsChildThread() {
+    @DisplayName("CMT-007: 특정 스레드에 자신의 글귀로 릴레이(답변)를 등록할 수 있다 (+ 이벤트 발행)")
+    void createReply_createsChildThread_andPublishesEvent_whenNotOwner() {
         // given
         Integer parentOwnerId = 1;
         Integer replyUserId = 2;
@@ -281,13 +287,23 @@ class CommunityThreadCommandServiceTest {
         CreateCommunityReplyRequest request = new CreateCommunityReplyRequest();
         ReflectionTestUtils.setField(request, "quoteId", 20);
 
+        // 닉네임 조회용 userRepository.findById()는 반드시 Optional을 반환하도록 스텁 필요
+        User replyUser = mock(User.class);
+        when(replyUser.getUserNickname()).thenReturn("바나나");
+        when(userRepository.findById(replyUserId)).thenReturn(Optional.of(replyUser));
+
         when(communityThreadRepository.save(any(CommunityThread.class)))
                 .thenAnswer(invocation -> {
                     CommunityThread reply = invocation.getArgument(0, CommunityThread.class);
                     ReflectionTestUtils.setField(reply, "id", 1000);
                     ReflectionTestUtils.setField(reply, "createdAt", LocalDateTime.now());
+                    // updatedAt은 생성 직후 null로 두어 updated=false 유지
+                    ReflectionTestUtils.setField(reply, "updatedAt", null);
                     return reply;
                 });
+
+        ArgumentCaptor<ThreadReplyCreatedEvent> eventCaptor =
+                ArgumentCaptor.forClass(ThreadReplyCreatedEvent.class);
 
         // when
         CommunityReplyCommandResponse response =
@@ -298,11 +314,48 @@ class CommunityThreadCommandServiceTest {
 
         assertThat(response.getReplyId()).isEqualTo(1000);
         assertThat(response.isUpdated()).isFalse();
+        assertThat(response.getUpdatedAt()).isNull();
 
-        // parent-children 연관관계 검증
         assertThat(parent.getChildren())
                 .extracting(CommunityThread::getId)
                 .contains(1000);
+
+        // 이벤트 발행 검증 (작성자 != 답글작성자)
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("CMT-007: 자기 글에 자기 답글이면 이벤트를 발행하지 않는다(정책)")
+    void createReply_doesNotPublishEvent_whenOwnerReplies() {
+        // given
+        Integer ownerId = 1;
+
+        CommunityThread parent = createThreadEntity(1, ownerId, 10, false, 0, false);
+        when(communityThreadRepository.findByIdAndDeletedFalse(1))
+                .thenReturn(Optional.of(parent));
+
+        CreateCommunityReplyRequest request = new CreateCommunityReplyRequest();
+        ReflectionTestUtils.setField(request, "quoteId", 20);
+
+        User owner = mock(User.class);
+        when(owner.getUserNickname()).thenReturn("오너");
+        when(userRepository.findById(ownerId)).thenReturn(Optional.of(owner));
+
+        when(communityThreadRepository.save(any(CommunityThread.class)))
+                .thenAnswer(invocation -> {
+                    CommunityThread reply = invocation.getArgument(0, CommunityThread.class);
+                    ReflectionTestUtils.setField(reply, "id", 2000);
+                    ReflectionTestUtils.setField(reply, "createdAt", LocalDateTime.now());
+                    ReflectionTestUtils.setField(reply, "updatedAt", null);
+                    return reply;
+                });
+
+        // when
+        communityThreadCommandService.createReply(1, ownerId, request);
+
+        // then
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test

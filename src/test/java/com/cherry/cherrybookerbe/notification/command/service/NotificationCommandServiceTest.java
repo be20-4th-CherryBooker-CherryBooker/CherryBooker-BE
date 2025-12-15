@@ -15,10 +15,7 @@ import com.cherry.cherrybookerbe.notification.command.dto.response.NotificationD
 import com.cherry.cherrybookerbe.notification.command.dto.response.NotificationTemplateResponse;
 import com.cherry.cherrybookerbe.notification.command.event.NotificationCreatedEvent;
 import com.cherry.cherrybookerbe.notification.command.event.NotificationReadEvent;
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import com.cherry.cherrybookerbe.user.command.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +29,11 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -51,6 +53,9 @@ class NotificationCommandServiceTest {
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
+
+    @Mock
+    private UserRepository userRepository; // ✅ 추가 (서비스 생성자 의존성)
 
     @InjectMocks
     private NotificationCommandService notificationCommandService;
@@ -83,6 +88,7 @@ class NotificationCommandServiceTest {
         assertThat(response.getTemplateId()).isEqualTo(1);
         assertThat(response.getTemplateType()).isEqualTo(NotificationTemplateType.EVENT_THREAD_REPLY);
         assertThat(response.getTitle()).isEqualTo("답변 알림 템플릿");
+        assertThat(response.getBody()).contains("{{nickname}}");
     }
 
     @Test
@@ -114,11 +120,12 @@ class NotificationCommandServiceTest {
 
         assertThat(response.getTemplateId()).isEqualTo(1);
         assertThat(response.getTitle()).isEqualTo("수정된 제목");
+        assertThat(response.getTemplateType()).isEqualTo(NotificationTemplateType.EVENT_THREAD_REPLY);
     }
 
     @Test
     @DisplayName("NTF-004: SYSTEM 타입 템플릿은 삭제(소프트 삭제)할 수 있다")
-    void deleteTemplate_marksTemplateDeleted() {
+    void deleteTemplate_marksTemplateDeleted_whenSystem() {
         // given
         NotificationTemplate template = NotificationTemplate.builder()
                 .title("삭제할 템플릿")
@@ -136,11 +143,33 @@ class NotificationCommandServiceTest {
         assertThat(template.isDeleted()).isTrue();
     }
 
+    @Test
+    @DisplayName("NTF-004: EVENT_* 타입 템플릿은 삭제할 수 없고 BAD_REQUEST")
+    void deleteTemplate_throwsBadRequest_whenEventTemplate() {
+        // given
+        NotificationTemplate template = NotificationTemplate.builder()
+                .title("이벤트 템플릿")
+                .body("본문")
+                .type(NotificationTemplateType.EVENT_THREAD_REPLY)
+                .build();
+        ReflectionTestUtils.setField(template, "id", 2);
+
+        when(templateRepository.findById(2)).thenReturn(Optional.of(template));
+
+        // when & then
+        assertThatThrownBy(() -> notificationCommandService.deleteTemplate(2))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting("statusCode")
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+
+        assertThat(template.isDeleted()).isFalse();
+    }
+
     // ============ 템플릿 기반 발송 ============
 
     @Test
     @DisplayName("NTF-005: 템플릿 기반으로 알림을 발송하고 로그/이벤트를 기록한다")
-    void sendByTemplate_sendsNotificationAndPublishesEvent() {
+    void sendByTemplate_sendsNotificationAndPublishesEvent_afterCommit() {
         // given
         NotificationTemplate template = NotificationTemplate.builder()
                 .title("신고 {{count}}건 발생")
@@ -153,13 +182,9 @@ class NotificationCommandServiceTest {
 
         NotificationSendRequest request = NotificationSendRequest.builder()
                 .targetUserId(1)
-                .variables(Map.of(
-                        "count", "3",
-                        "nickname", "체리"
-                ))
+                .variables(Map.of("count", "3", "nickname", "체리"))
                 .build();
 
-        // Notification 저장 결과 스텁
         Notification savedNotification = Notification.builder()
                 .userId(1)
                 .title("신고 3건 발생")
@@ -169,32 +194,39 @@ class NotificationCommandServiceTest {
         ReflectionTestUtils.setField(savedNotification, "createdAt", LocalDateTime.now());
 
         when(notificationRepository.save(any(Notification.class))).thenReturn(savedNotification);
-
-        // 로그 저장 스텁
+        // flush()는 void라 별도 stubbing 불필요하지만, 호출 검증은 가능
+        when(notificationRepository.countByUserIdAndReadFalse(1)).thenReturn(5L);
         when(sendLogRepository.save(any(NotificationSendLog.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        when(notificationRepository.countByUserIdAndReadFalse(1)).thenReturn(5L);
-
-        // 트랜잭션 동기화 활성화
         TransactionSynchronizationManager.initSynchronization();
         try {
             // when
             NotificationDispatchResponse response =
                     notificationCommandService.sendByTemplate(10, request);
 
-            // then: 저장된 알림 ID 반환
+            // then: 응답
             assertThat(response.getNotificationId()).isEqualTo(100);
 
-            // 템플릿 merge 검증
-            ArgumentCaptor<Notification> notificationCaptor =
-                    ArgumentCaptor.forClass(Notification.class);
+            // 저장된 Notification 검증
+            ArgumentCaptor<Notification> notificationCaptor = ArgumentCaptor.forClass(Notification.class);
             verify(notificationRepository).save(notificationCaptor.capture());
 
             Notification toSave = notificationCaptor.getValue();
             assertThat(toSave.getUserId()).isEqualTo(1);
             assertThat(toSave.getTitle()).isEqualTo("신고 3건 발생");
-            assertThat(toSave.getContent()).contains("체리님");
+            assertThat(toSave.getContent()).isEqualTo("체리님, 새로운 신고가 있습니다.");
+
+            verify(notificationRepository).flush(); // ✅ 신규 로직 반영
+
+            // 저장된 SendLog 검증
+            ArgumentCaptor<NotificationSendLog> logCaptor = ArgumentCaptor.forClass(NotificationSendLog.class);
+            verify(sendLogRepository).save(logCaptor.capture());
+
+            NotificationSendLog logEntity = logCaptor.getValue();
+            assertThat(logEntity.getTemplate()).isSameAs(template);
+            assertThat(logEntity.getStatus()).isEqualTo(NotificationSendStatus.SUCCESS);
+            assertThat(logEntity.getBodySnapshot()).isEqualTo("체리님, 새로운 신고가 있습니다.");
 
             // afterCommit 수동 호출 → 이벤트 발행 검증
             for (TransactionSynchronization sync : TransactionSynchronizationManager.getSynchronizations()) {
@@ -208,6 +240,8 @@ class NotificationCommandServiceTest {
             NotificationCreatedEvent event = eventCaptor.getValue();
             assertThat(event.getUserId()).isEqualTo(1);
             assertThat(event.getNotificationId()).isEqualTo(100);
+            assertThat(event.getTitle()).isEqualTo("신고 3건 발생");
+            assertThat(event.getContent()).isEqualTo("체리님, 새로운 신고가 있습니다.");
             assertThat(event.getUnreadCount()).isEqualTo(5L);
         } finally {
             TransactionSynchronizationManager.clearSynchronization();
@@ -216,13 +250,14 @@ class NotificationCommandServiceTest {
 
     @Test
     @DisplayName("삭제된 템플릿으로 알림 발송 시 BAD_REQUEST 예외가 발생한다")
-    void sendByTemplate_deletedTemplate_throwsException() {
+    void sendByTemplate_deletedTemplate_throwsBadRequest() {
         // given
         NotificationTemplate template = NotificationTemplate.builder()
                 .title("삭제된 템플릿")
                 .body("본문")
                 .type(NotificationTemplateType.SYSTEM)
                 .build();
+        ReflectionTestUtils.setField(template, "id", 1);
         template.markDeleted();
 
         when(templateRepository.findById(1)).thenReturn(Optional.of(template));
@@ -242,7 +277,7 @@ class NotificationCommandServiceTest {
 
     @Test
     @DisplayName("알림함 - 단일 알림 읽음 처리 후 미읽음 개수를 이벤트로 발행한다")
-    void markRead_marksNotificationReadAndPublishesEvent() {
+    void markRead_marksNotificationReadAndPublishesEvent_afterCommit() {
         // given
         Notification notification = Notification.builder()
                 .userId(1)
@@ -250,7 +285,7 @@ class NotificationCommandServiceTest {
                 .content("내용")
                 .build();
         ReflectionTestUtils.setField(notification, "id", 100);
-        ReflectionTestUtils.setField(notification, "read", false);
+        // read는 builder 기본 false
 
         when(notificationRepository.findById(100)).thenReturn(Optional.of(notification));
         when(notificationRepository.countByUserIdAndReadFalse(1)).thenReturn(3L);
@@ -260,10 +295,9 @@ class NotificationCommandServiceTest {
             // when
             notificationCommandService.markRead(1, 100);
 
-            // then: 읽음 처리
+            // then
             assertThat(notification.isRead()).isTrue();
 
-            // afterCommit 수동 호출 → 이벤트 발행 검증
             for (TransactionSynchronization sync : TransactionSynchronizationManager.getSynchronizations()) {
                 sync.afterCommit();
             }
@@ -282,7 +316,7 @@ class NotificationCommandServiceTest {
 
     @Test
     @DisplayName("다른 사용자의 알림을 읽음 처리하려 하면 FORBIDDEN 예외가 발생한다")
-    void markRead_otherUsersNotification_throwsException() {
+    void markRead_otherUsersNotification_throwsForbidden() {
         // given
         Notification notification = Notification.builder()
                 .userId(1)
@@ -302,26 +336,14 @@ class NotificationCommandServiceTest {
 
     @Test
     @DisplayName("알림함 - 모든 미읽음 알림을 읽음 처리하고 미읽음 개수를 이벤트로 발행한다")
-    void markAllRead_marksAllUnreadAsReadAndPublishesEvent() {
+    void markAllRead_marksAllUnreadAsReadAndPublishesEvent_afterCommit() {
         // given
-        Notification n1 = Notification.builder()
-                .userId(1)
-                .title("알림1")
-                .content("내용1")
-                .build();
+        Notification n1 = Notification.builder().userId(1).title("알림1").content("내용1").build();
+        Notification n2 = Notification.builder().userId(1).title("알림2").content("내용2").build();
         ReflectionTestUtils.setField(n1, "id", 1);
-        ReflectionTestUtils.setField(n1, "read", false);
-
-        Notification n2 = Notification.builder()
-                .userId(1)
-                .title("알림2")
-                .content("내용2")
-                .build();
         ReflectionTestUtils.setField(n2, "id", 2);
-        ReflectionTestUtils.setField(n2, "read", false);
 
-        when(notificationRepository.findByUserIdAndReadFalse(1))
-                .thenReturn(List.of(n1, n2));
+        when(notificationRepository.findByUserIdAndReadFalse(1)).thenReturn(List.of(n1, n2));
         when(notificationRepository.countByUserIdAndReadFalse(1)).thenReturn(0L);
 
         TransactionSynchronizationManager.initSynchronization();
@@ -329,11 +351,10 @@ class NotificationCommandServiceTest {
             // when
             notificationCommandService.markAllRead(1);
 
-            // then: 모두 읽음 처리
+            // then
             assertThat(n1.isRead()).isTrue();
             assertThat(n2.isRead()).isTrue();
 
-            // afterCommit 수동 호출
             for (TransactionSynchronization sync : TransactionSynchronizationManager.getSynchronizations()) {
                 sync.afterCommit();
             }
@@ -354,8 +375,7 @@ class NotificationCommandServiceTest {
     @DisplayName("알림함 - 미읽음 알림이 없으면 아무 작업도 하지 않는다")
     void markAllRead_noUnread_doNothing() {
         // given
-        when(notificationRepository.findByUserIdAndReadFalse(1))
-                .thenReturn(List.of());
+        when(notificationRepository.findByUserIdAndReadFalse(1)).thenReturn(List.of());
 
         // when
         notificationCommandService.markAllRead(1);
@@ -387,7 +407,7 @@ class NotificationCommandServiceTest {
 
     @Test
     @DisplayName("알림함 - 다른 사용자의 알림 삭제 시 FORBIDDEN 예외 발생")
-    void deleteNotification_otherUsersNotification_throwsException() {
+    void deleteNotification_otherUsersNotification_throwsForbidden() {
         // given
         Notification notification = Notification.builder()
                 .userId(1)
