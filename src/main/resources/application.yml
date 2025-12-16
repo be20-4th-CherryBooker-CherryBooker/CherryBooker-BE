@@ -6,17 +6,13 @@ server:
 spring:
   profiles:
     active: local
-  data:
-    redis:
-      host: localhost
-      port: 6379
 
   application:
     name: CHERRY-BOOKER-SERVICE
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: create
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MariaDBDialect

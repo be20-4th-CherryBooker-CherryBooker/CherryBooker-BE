@@ -12,6 +12,10 @@ public record MyBookDetailResponse(
         String author,
         String coverImageUrl,
         List<QuoteSnippetResponse> quotes,
-        boolean badgeIssued
+        boolean badgeIssued,
+        int page,
+        int size,
+        long totalQuotes,
+        boolean hasNext
 ) {
 }

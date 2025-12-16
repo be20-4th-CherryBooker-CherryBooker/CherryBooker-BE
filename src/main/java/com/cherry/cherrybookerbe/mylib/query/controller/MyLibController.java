@@ -12,6 +12,7 @@ import com.cherry.cherrybookerbe.mylib.query.service.MyLibSearchService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -46,8 +47,14 @@ public class MyLibController {
     @Operation(operationId = " ", summary = " ", description = " ")
     @GetMapping("/books/{myLibId}/quotes")
     public ResponseEntity<ApiResponse<MyBookDetailResponse>> getBookQuotes(
-            @Valid @PathVariable Long myLibId) {
-        return ResponseEntity.ok(ApiResponse.success(myLibSearchService.getBookDetail(myLibId)));
+            @Valid @PathVariable Long myLibId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        myLibSearchService.getBookDetail(myLibId, PageRequest.of(page, size))
+                )
+        );
     }
 
     @Operation(operationId = " ", summary = " ", description = " ")

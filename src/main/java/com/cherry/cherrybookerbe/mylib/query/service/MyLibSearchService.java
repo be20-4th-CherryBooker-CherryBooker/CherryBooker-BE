@@ -10,11 +10,14 @@ import com.cherry.cherrybookerbe.mylib.query.dto.response.MyBookCardResponse;
 import com.cherry.cherrybookerbe.mylib.query.dto.response.MyBookDetailResponse;
 import com.cherry.cherrybookerbe.mylib.query.dto.response.MyLibrarySliceResponse;
 import com.cherry.cherrybookerbe.mylib.query.dto.response.QuoteSnippetResponse;
+import com.cherry.cherrybookerbe.quote.command.entity.Quote;
 import com.cherry.cherrybookerbe.quote.query.repository.QuoteQueryRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.TypedQuery;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -65,11 +68,12 @@ public class MyLibSearchService {
     }
 
     // 나의 서재에 등록되어 있는 책의 세부 정보 조회
-    public MyBookDetailResponse getBookDetail(Long myLibId) {
+    public MyBookDetailResponse getBookDetail(Long myLibId, Pageable pageable) {
         MyLib myLib = fetchMyLib(myLibId);
-        List<QuoteSnippetResponse> quotes = quoteQueryRepository
-                .findByUserBookIdAndStatusOrderByCreatedAtDesc(myLibId, Status.Y)
-                .stream()
+        Page<Quote> quotePage =
+                quoteQueryRepository.findByUserBookIdAndStatus(myLibId, Status.Y, pageable);
+
+        List<QuoteSnippetResponse> quotes = quotePage.getContent().stream()
                 .map(QuoteSnippetResponse::from)
                 .toList();
 
@@ -81,7 +85,11 @@ public class MyLibSearchService {
                 myLib.getBook().getAuthor(),
                 myLib.getBook().getCoverImageUrl(),
                 quotes,
-                myLib.getBookStatus() == BookStatus.READ
+                myLib.getBookStatus() == BookStatus.READ,
+                quotePage.getNumber(),
+                quotePage.getSize(),
+                quotePage.getTotalElements(),
+                quotePage.hasNext()
         );
     }
 

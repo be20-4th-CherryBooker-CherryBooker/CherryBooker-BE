@@ -20,6 +20,8 @@ public interface QuoteQueryRepository extends JpaRepository<Quote, Long> {
 
     List<Quote> findByUserBookIdAndStatusOrderByCreatedAtDesc(Long userBookId, Status status);
 
+    Page<Quote> findByUserBookIdAndStatus(Long userBookId, Status status, Pageable pageable);
+
     Page<Quote> findByUserIdAndStatusAndBookTitleContaining(
             Long userId,
             Status status,
